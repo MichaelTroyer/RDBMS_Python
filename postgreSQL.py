@@ -5,35 +5,42 @@ import yaml
 
 def main():
 
-    # Read database connection information from config yaml file
-        # e.g.
-        # 
-        # 
-        # 
-        # 
+    # DVD Rentals postgreSQL sample database
+    # http://www.postgresqltutorial.com/postgresql-sample-database/
 
-        config_file = r'.\data\PostgreSQL\config.yml'
+    try:
+        # Read database connection information from config yaml file
+        # e.g.
+        # host: localhost
+        # user: postgres
+        # password: password
+        # database: dvdrental
+
+        config_file = r'.\config\PostgreSQL\config.yml'
         config = yaml.safe_load(open(config_file))
 
     except:
         print('Error reading configuration file')
+        raise
 
     try:
         conn = psycopg2.connect(**config)
         cursor = conn.cursor()
 
-        List all tables
-        table_names = conn.execute("SELECT * FROM pg_catalog.pg_tables;")
+        # List all tables
+        cursor.execute("SELECT * FROM pg_catalog.pg_tables;")
+        table_names = cursor.fetchall()
         for table_name in table_names:
-            print(table_name)
+            print(table_name[:2])
 
-        cursor.close()
-
-    except Exception:
+    except:
         print(traceback.format_exc())
 
-    else:
-        conn.close()
+    finally:
+        try: cursor.close()
+        except: pass
+        try: conn.close()
+        except: pass
  
  
 if __name__ == '__main__':
