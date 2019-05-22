@@ -1,9 +1,11 @@
 from mysql import connector
+import os
 import traceback
 import yaml
 
 from RDBMSExceptions import ConnectionError
 from RDBMSExceptions import CreateDatabaseError, DropDatabaseError
+from RDBMSExceptions import CreateTableError, DropTableError
 
 
 def connect_to_server(connection_params):
@@ -118,36 +120,90 @@ def drop_database(connection, database_name):
         raise DropDatabaseError('Error dropping database: {}'.format(database_name)) from e
 
 
-def add_table(database_connection, table_params):
+def create_table(database_connection, table_params):
+    "CREATE TABLE / ALTER TABLE <table>"
     pass
 
 
 def drop_table(database_connection, table_name):
+    "DROP TABLE IF EXISTS <table>"
     pass
 
 
     
 ### Maintenance Tasks:
 
-# Backup database with mysqldump
-# Checks table for integrity errors: https://dev.mysql.com/doc/refman/8.0/en/check-table.html
-# Optimize: https://dev.mysql.com/doc/refman/8.0/en/optimize-table.html
-# Analyze: https://dev.mysql.com/doc/refman/8.0/en/analyze-table.html
+
+def backup_database(connection_params, database_name, backup_path):
+    """
+    Backup database to disc:
+    inputs:
+        connection_params: dict of connection parameters
+            password: required
+            host: server address - defaults to localhost if not supplied
+            user: username - defaults to root if not supplied
+    returns:
+        True on success
+    raises:
+        DatabaseBackupError on failure
+    """
+    try:
+        password = connection_params.pop('password')
+        host = connection_params.pop('host', 'localhost')
+        user = connection_params.pop('user', 'root')
+
+        if connection_params:
+            raise ConnectionError('Unknown connection parameter(s):', connection_params)
+
+        dump_cmd = "mysqldump -h {} -u {} -p {} {} > {}.sql".format(
+            host, user, password, database_name, backup_path
+            )
+        os.system(dump_cmd)
+
+        zip_cmd = ''
+        # os.system(zip_cmd)
+
+        return True
+
+    except KeyError as e:
+        raise ConnectionError('Missing connection parameter') from e
+    except Exception as e:
+        raise DatabaseBackupError('Error connecting to database') from e    
+
+
+def check_table_integrity():
+    """
+    https://dev.mysql.com/doc/refman/8.0/en/check-table.html
+    """
+    pass
+
+
+def optimize_table():
+    """
+    https://dev.mysql.com/doc/refman/8.0/en/optimize-table.html
+    """
+    pass
+    
+
+def analyze_table():
+    """
+    https://dev.mysql.com/doc/refman/8.0/en/analyze-table.html
+    """
+    pass
 
 
 
-### TESTING ###
 
-def test_create_database():
+
+########## TESTING ##########
+
+def test_create_database(test_params):
     """
     Test database creation by creating and dropping an empty schema.
     """
-    # Read server connection information from config yaml file
-    config_file = r'.\config\MySQL_config.yml'
-    config_params = yaml.safe_load(open(config_file))
     try:
         database = 'Test'
-        conn = connect_to_server(config_params)
+        conn = connect_to_server(test_params)
         create_database(conn, database)
         drop_database(conn, database)
 
@@ -155,7 +211,7 @@ def test_create_database():
         try: conn.close()
         except: pass
 
-def test_connections():
+def test_connections(test_params):
     """
     Test plain server connectivity and opening and closing a connection.
     Test database connectivity by establishing a connection and listing 
@@ -163,13 +219,9 @@ def test_connections():
     http://www.mysqltutorial.org/mysql-sample-database.aspx
     """
 
-    # Read database connection information from config yaml file
-    config_file = r'.\config\MySQL_config.yml'
-    config_params = yaml.safe_load(open(config_file))
-
     try: # Server test connection
-        host = config_params['host']
-        params = config_params.copy()
+        host = test_params['host']
+        params = test_params.copy()
         conn = connect_to_server(params)
         print('Successfully connected to server: ', host)
 
@@ -179,7 +231,7 @@ def test_connections():
 
     try: # Database test connection
         database = 'classicmodels'
-        params = config_params.copy()
+        params = test_params.copy()
         params['database'] = database
         conn = connect_to_database(params)
         print('Successfully connected to database: ', database)
@@ -194,6 +246,16 @@ def test_connections():
         except: pass
 
 
+def test_backup_database():
+    pass
+
+
+
 if __name__ == '__main__':
-    test_connections()
-    test_create_database()
+
+    # Read database connection information from config yaml file
+    config_file = r'.\config\MySQL_config.yml'
+    test_params = yaml.safe_load(open(config_file))
+
+    test_connections(test_params)
+    test_create_database(test_params)
