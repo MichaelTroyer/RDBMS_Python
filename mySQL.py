@@ -3,6 +3,41 @@ import traceback
 import yaml
 
 from RDBMSExceptions import ConnectionError
+from RDBMSExceptions import CreateDatabaseError, DropDatabaseError
+
+
+def connect_to_server(connection_params):
+    """
+    Establish a server connection and return a connection object.
+    inputs:
+        connection_params: dict of connection parameters
+            host: server address - defaults to localhost if not supplied
+            user: username - defaults to root if not supplied
+            password: required
+    returns:
+        connection object on success
+    raises
+        ConnectionError on failure
+    """
+    try:
+        host = connection_params.pop('host', 'localhost')
+        user = connection_params.pop('user', 'root')
+        password = connection_params.pop('password')
+
+        if connection_params:
+            raise ConnectionError('Unknown connection parameter(s):', connection_params)
+
+        connection = connector.connect(
+            host=host,
+            user=user,
+            password=password
+        )
+        return connection
+
+    except KeyError as e:
+        raise ConnectionError('Missing connection parameter') from e
+    except Exception as e:
+        raise ConnectionError('Error connecting to server instance') from e
 
 
 def connect_to_database(connection_params):
@@ -27,7 +62,7 @@ def connect_to_database(connection_params):
         user = connection_params.pop('user', 'root')
 
         if connection_params:
-            raise ConnectionError('Unknown keyword(s):', connection_params)
+            raise ConnectionError('Unknown connection parameter(s):', connection_params)
 
         connection = connector.connect(
             database=database,
@@ -43,20 +78,53 @@ def connect_to_database(connection_params):
         raise ConnectionError('Error connecting to database') from e
 
 
-def create_database(connection, database_params):
-    pass
+def create_database(connection, database_name):
+    """
+    Connect to a MySQL server instance and create a database.
+    Inputs:
+        connection: a MySQL server connection
+        database_name: the name of the database to create
+    returns:
+        True on success
+    raises:
+        CreateDatabaseError on failure
+    """
+    try:
+        cursor = connection.cursor()
+        cursor.execute("CREATE DATABASE {}".format(database_name))
+        print('Successfully created database: {}'.format(database_name))
+        return True
+    except Exception as e:
+        raise CreateDatabaseError('Error creating database: {}'.format(database_name)) from e
 
 
 def drop_database(connection, database_name):
+    """
+    Connect to a MySQL server instance and drop a database.
+    Inputs:
+        connection: a MySQL server connection
+        database_name: the name of the database to drop
+    returns:
+        True on success
+    raises:
+        DropDatabaseError on failure
+    """
+    try:
+        cursor = connection.cursor()
+        cursor.execute("DROP DATABASE {}".format(database_name))
+        print('Successfully dropped database: {}'.format(database_name))
+        return True
+    except Exception as e:
+        raise DropDatabaseError('Error dropping database: {}'.format(database_name)) from e
+
+
+def add_table(database_connection, table_params):
     pass
 
 
-def add_table(connection, table_params):
+def drop_table(database_connection, table_name):
     pass
 
-
-def drop_table(connection, table_name):
-    pass
 
     
 ### Maintenance Tasks:
@@ -70,8 +138,26 @@ def drop_table(connection, table_name):
 
 ### TESTING ###
 
-def test_connection():
+def test_create_database():
     """
+    Test database creation by creating and dropping an empty schema.
+    """
+    # Read server connection information from config yaml file
+    config_file = r'.\config\MySQL_config.yml'
+    config_params = yaml.safe_load(open(config_file))
+    try:
+        database = 'Test'
+        conn = connect_to_server(config_params)
+        create_database(conn, database)
+        drop_database(conn, database)
+
+    finally:
+        try: conn.close()
+        except: pass
+
+def test_connections():
+    """
+    Test plain server connectivity and opening and closing a connection.
     Test database connectivity by establishing a connection and listing 
     all tables in classicmodels MySQL sample database.
     http://www.mysqltutorial.org/mysql-sample-database.aspx
@@ -81,9 +167,21 @@ def test_connection():
     config_file = r'.\config\MySQL_config.yml'
     config_params = yaml.safe_load(open(config_file))
 
-    try:
-        database = config_params['database']
-        conn = connect_to_database(config_params)
+    try: # Server test connection
+        host = config_params['host']
+        params = config_params.copy()
+        conn = connect_to_server(params)
+        print('Successfully connected to server: ', host)
+
+    finally:
+        try: conn.close()
+        except: pass
+
+    try: # Database test connection
+        database = 'classicmodels'
+        params = config_params.copy()
+        params['database'] = database
+        conn = connect_to_database(params)
         print('Successfully connected to database: ', database)
         cursor = conn.cursor()
         print('Tables:')
@@ -97,4 +195,5 @@ def test_connection():
 
 
 if __name__ == '__main__':
-    test_connection()
+    test_connections()
+    test_create_database()
