@@ -1,11 +1,13 @@
-from mysql import connector
 import os
 import traceback
 import yaml
 
+from mysql import connector
+
 from RDBMSExceptions import ConnectionError
 from RDBMSExceptions import CreateDatabaseError, DropDatabaseError
 from RDBMSExceptions import CreateTableError, DropTableError
+from RDBMSExceptions import DatabaseBackupError
 
 
 def connect_to_server(connection_params):
@@ -134,31 +136,34 @@ def drop_table(database_connection, table_name):
 ### Maintenance Tasks:
 
 
-def backup_database(connection_params, database_name, backup_path):
+def backup_database(connection_params, database, backup_path):
     """
-    Backup database to disc:
+    Backup database to sql file
     inputs:
         connection_params: dict of connection parameters
-            password: required
             host: server address - defaults to localhost if not supplied
             user: username - defaults to root if not supplied
+        database: database name
+        backup_path: full file path and name of backup (no extension)
     returns:
         True on success
     raises:
         DatabaseBackupError on failure
+
+    NOTE: Requires MySQL\MySQL Server <VER>\bin directory on PATH
+    NOTE: Will prompt for password
     """
     try:
-        password = connection_params.pop('password')
         host = connection_params.pop('host', 'localhost')
         user = connection_params.pop('user', 'root')
 
         if connection_params:
             raise ConnectionError('Unknown connection parameter(s):', connection_params)
 
-        dump_cmd = "mysqldump -h {} -u {} -p {} {} > {}.sql".format(
-            host, user, password, database_name, backup_path
-            )
-        os.system(dump_cmd)
+        if not backup_path.endswith('.sql'):
+            backup_path += '.sql'
+        cmd = "mysqldump -h {} -u {} -p {} > {}".format(host, user, database, backup_path)
+        os.system(cmd)
 
         zip_cmd = ''
         # os.system(zip_cmd)
@@ -171,28 +176,31 @@ def backup_database(connection_params, database_name, backup_path):
         raise DatabaseBackupError('Error connecting to database') from e    
 
 
-def check_table_integrity():
+def table_maintenance(connection_params, maintenance_type='check'):
     """
     https://dev.mysql.com/doc/refman/8.0/en/check-table.html
-    """
-    pass
-
-
-def optimize_table():
-    """
     https://dev.mysql.com/doc/refman/8.0/en/optimize-table.html
-    """
-    pass
-    
-
-def analyze_table():
-    """
     https://dev.mysql.com/doc/refman/8.0/en/analyze-table.html
+    inputs:
+        connection_params: dict of connection parameters
+            database: database name
+            host: server address - defaults to localhost if not supplied
+            user: username - defaults to root if not supplied
+            *will prompt for password
+        type: type of maintenance [check, optimize, analyze] - see docs
+    returns:
+        result record
     """
-    pass
+    host = connection_params.pop('host', 'localhost')
+    user = connection_params.pop('user', 'root')
+    database = connection_params.pop('database')
 
+    if connection_params:
+        raise ConnectionError('Unknown connection parameter(s):', connection_params)
 
-
+    cmd = "mysqlcheck -h {} -u {} -p --{} --databases {}".format(host, user, maintenance_type, database)
+    results = os.system(cmd)
+    return results
 
 
 ########## TESTING ##########
@@ -246,10 +254,24 @@ def test_connections(test_params):
         except: pass
 
 
-def test_backup_database():
-    pass
+def test_backup_database(test_params):
+    database = 'classicmodels'
+    output_path = r'C:\Users\mtroyer\Projects\RDBMS\data\MySQL\backups\mysql_backup'
+    # Delete if exists - don't do this in production - just for testing
+    if os.path.exists(output_path):
+        os.remove(output_path)
+    # Don't use stored password - unpredictable parsing and bad practice - prompt instead
+    test_params.pop('password')
+    backup_database(test_params, database, output_path)
 
 
+def test_table_maintenance(test_params):
+    test_params.pop('password')
+    test_params['database'] = 'classicmodels'
+    for task in ['check', 'optimize', 'analyze']:
+        result = table_maintenance(test_params.copy(), task)
+        print(result)
+        
 
 if __name__ == '__main__':
 
@@ -257,5 +279,7 @@ if __name__ == '__main__':
     config_file = r'.\config\MySQL_config.yml'
     test_params = yaml.safe_load(open(config_file))
 
-    test_connections(test_params)
-    test_create_database(test_params)
+    test_connections(test_params.copy())
+    test_create_database(test_params.copy())
+    test_backup_database(test_params.copy())
+    test_table_maintenance(test_params.copy())
